@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PacWardX (tray)
+Comment=Start PacWardX minimised to the system tray
+Exec=@BIN@ --tray
+Icon=pacwardx
+Terminal=false
+X-KDE-autostart-after=panel

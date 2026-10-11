@@ -1,0 +1,10 @@
+post_install() {
+  cat <<'MSG'
+==> PacWardX is installed. To finish setting it up for your user:
+      systemctl --user enable --now pacwardx-daemon     # scans on a schedule
+      cp /usr/share/pacwardx/pacwardx-tray.desktop ~/.config/autostart/   # optional: tray at login
+==> Root-only checks (ports, firewall, logins, file integrity) are off until you opt in:
+      sudo usermod -aG pacwardx $USER                    # then log out and back in (or reboot)
+MSG
+}
+

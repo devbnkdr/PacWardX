@@ -1,0 +1,18 @@
+name: Feature or new check
+description: Suggest a feature or something PacWardX should check
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: PacWardX only reads and reports. Checks may suggest a fix, but never change the system.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How could it be checked?
+      description: The file, command or setting that shows it, and whether it needs root.

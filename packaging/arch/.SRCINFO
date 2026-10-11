@@ -1,0 +1,26 @@
+pkgbase = pacwardx
+	pkgdesc = A calm, always-on security monitor for Arch Linux and CachyOS
+	pkgver = 0.1.0
+	pkgrel = 1
+	url = https://github.com/devbnkdr/PacWardX
+	install = pacwardx.install
+	backup = etc/sudoers.d/pacwardx
+	arch = any
+	license = MIT
+	checkdepends = python-pytest
+	makedepends = git
+	makedepends = python-build
+	makedepends = python-installer
+	makedepends = python-setuptools
+	depends = python
+	depends = pyside6
+	depends = sudo
+	optdepends = ufw: firewall checks
+	optdepends = pacman-contrib: pending update checks
+	optdepends = arch-audit: known vulnerability checks
+	optdepends = gitleaks: secrets committed to git repos
+	optdepends = clamav: virus scan during file scans
+	source = git+https://github.com/devbnkdr/PacWardX.git#tag=v0.1.0
+	sha256sums = SKIP
+
+pkgname = pacwardx

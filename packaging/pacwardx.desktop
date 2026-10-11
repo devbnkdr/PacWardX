@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PacWardX
+Comment=Security status: packages, network exposure, system hardening, files
+Exec=@BIN@
+Icon=pacwardx
+Terminal=false
+Categories=System;Security;
+StartupWMClass=pacwardx

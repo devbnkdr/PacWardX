@@ -1,0 +1,35 @@
+name: False alarm
+description: A finding that is wrong, or rated more serious than it should be
+labels: [false-alarm]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If a finding is correct but fine on your machine, you can **Ignore** it instead.
+        **Check everything you paste for personal details** (usernames, hostnames, IPs, paths) and replace them.
+  - type: input
+    id: title
+    attributes:
+      label: Finding title
+      placeholder: "SSH listening on all interfaces with no firewall protection"
+    validations:
+      required: true
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options: [Packages, Network, System, Files, Changes, "Privacy & OpSec"]
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why is it wrong?
+      description: What is actually true on your system, and how you checked.
+    validations:
+      required: true
+  - type: textarea
+    id: detail
+    attributes:
+      label: Finding detail (optional, with personal details removed)
+      render: text

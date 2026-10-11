@@ -1,0 +1,36 @@
+name: Bug report
+description: Something in PacWardX crashes or doesn't work
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. **Before you paste anything, check it for personal details**:
+        usernames, hostnames, IP addresses, file paths, device names or keys. Replace them with placeholders.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: PacWardX version
+      description: Shown under Help, or run `pacwardx --version`.
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and desktop
+      placeholder: "Arch Linux, KDE Plasma 6 (Wayland)"
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: |
+        Terminal output or `journalctl --user -u pacwardx-daemon -n 50`. Remove personal details first.
+      render: text

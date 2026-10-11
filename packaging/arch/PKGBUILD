@@ -1,0 +1,53 @@
+# Maintainer: devbnkdr <49907665+devbnkdr@users.noreply.github.com>
+pkgname=pacwardx
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="A calm, always-on security monitor for Arch Linux and CachyOS"
+arch=('any')
+url="https://github.com/devbnkdr/PacWardX"
+license=('MIT')
+depends=('python' 'pyside6' 'sudo')
+makedepends=('git' 'python-build' 'python-installer' 'python-setuptools')
+checkdepends=('python-pytest')
+optdepends=('ufw: firewall checks'
+            'pacman-contrib: pending update checks'
+            'arch-audit: known vulnerability checks'
+            'gitleaks: secrets committed to git repos'
+            'clamav: virus scan during file scans')
+backup=('etc/sudoers.d/pacwardx')
+install=pacwardx.install
+source=("git+https://github.com/devbnkdr/PacWardX.git#tag=v$pkgver")
+sha256sums=('SKIP')
+
+build() {
+  cd PacWardX
+  python -m build --wheel --no-isolation
+}
+
+check() {
+  cd PacWardX
+  QT_QPA_PLATFORM=offscreen python -m pytest -q
+}
+
+package() {
+  cd PacWardX
+  python -m installer --destdir="$pkgdir" dist/*.whl
+
+  # Read-only root helper. Only members of the pacwardx group may run it through sudo.
+  install -Dm755 packaging/pacwardx-priv "$pkgdir/usr/lib/pacwardx/pacwardx-priv"
+  install -dm750 "$pkgdir/etc/sudoers.d"
+  printf '%%pacwardx ALL=(root) NOPASSWD: /usr/lib/pacwardx/pacwardx-priv\n' > "$pkgdir/etc/sudoers.d/pacwardx"
+  chmod 440 "$pkgdir/etc/sudoers.d/pacwardx"
+  install -dm755 "$pkgdir/usr/lib/sysusers.d"
+  printf 'g pacwardx - -\n' > "$pkgdir/usr/lib/sysusers.d/pacwardx.conf"
+
+  # Background service (systemd --user), menu entry, optional autostart entry and icon.
+  sed -e '/^WorkingDirectory=/d' -e 's|^ExecStart=.*|ExecStart=/usr/bin/pacwardx daemon|' \
+    packaging/pacwardx-daemon.service | install -Dm644 /dev/stdin "$pkgdir/usr/lib/systemd/user/pacwardx-daemon.service"
+  sed 's|@BIN@|pacwardx|' packaging/pacwardx.desktop \
+    | install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/pacwardx.desktop"
+  sed 's|@BIN@|pacwardx|' packaging/pacwardx-tray.desktop \
+    | install -Dm644 /dev/stdin "$pkgdir/usr/share/pacwardx/pacwardx-tray.desktop"
+  install -Dm644 pacwardx/ui/pacwardx.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/pacwardx.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

@@ -1,0 +1,18 @@
+[Unit]
+Description=PacWardX background security scanner
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO@
+ExecStart=@PY@ -m pacwardx daemon
+Restart=on-failure
+RestartSec=5
+Nice=10
+IOSchedulingClass=idle
+# No mount sandboxing here: a user-level ProtectSystem= puts the service in a user
+# namespace where root is mapped to nobody, and sudo (needed for the root helper)
+# refuses to run. The daemon only reads; the helper enforces the root boundary.
+
+[Install]
+WantedBy=default.target

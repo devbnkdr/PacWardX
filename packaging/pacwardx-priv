@@ -1,0 +1,179 @@
+#!/usr/bin/python3 -I
+"""PacWardX root helper. Installed root-owned at /usr/local/lib/pacwardx/pacwardx-priv and
+allowed via /etc/sudoers.d/pacwardx. Every subcommand is read-only with fixed arguments;
+nothing from the caller reaches a shell. Output is one JSON object on stdout.
+
+-I (isolated mode) ignores PYTHONPATH and the user site dir, so a writable
+module in the user's environment can't be injected into this process.
+"""
+import glob
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+
+SUID_SKIP = ("/usr/bin/", "/usr/sbin/", "/usr/lib/", "/usr/libexec/", "/bin/", "/sbin/",
+             "/snap/", "/var/lib/docker/", "/var/lib/containerd/", "/var/lib/flatpak/",
+             "/proc/", "/sys/", "/dev/")
+
+
+def sh(cmd, timeout=120):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return p.stdout
+
+
+def cmd_ping():
+    return {"ok": True}
+
+
+def cmd_sockets():
+    return {"text": sh(["ss", "-tulpnH"])}
+
+
+def cmd_ufw():
+    return {"text": sh(["ufw", "status", "verbose"])}
+
+
+def cmd_sshd():
+    return {"text": sh(["sshd", "-T"])}
+
+
+def cmd_sudoers():
+    hits = []
+    files = ["/etc/sudoers"]
+    try:
+        files += [os.path.join("/etc/sudoers.d", f) for f in sorted(os.listdir("/etc/sudoers.d"))]
+    except OSError:
+        pass
+    for f in files:
+        try:
+            with open(f, "r", errors="replace") as fh:
+                for line in fh:
+                    s = line.strip()
+                    if s.startswith("#") or "NOPASSWD" not in s:
+                        continue
+                    hits.append({"file": f, "line": s})
+        except OSError:
+            continue
+    return {"nopasswd": hits}
+
+
+def cmd_suid():
+    out = sh(["find", "/", "-xdev", "-perm", "-4000", "-type", "f"], timeout=600) or ""
+    files = [l for l in out.splitlines() if l and not l.startswith(SUID_SKIP)]
+    return {"files": files}
+
+
+def cmd_pacnew():
+    out = sh(["find", "/etc", "-name", "*.pacnew", "-o", "-name", "*.pacsave"]) or ""
+    return {"files": [l for l in out.splitlines() if l]}
+
+
+def cmd_shadow():
+    empty = []
+    try:
+        with open("/etc/shadow", "r") as fh:
+            for line in fh:
+                parts = line.split(":")
+                if len(parts) > 1 and parts[1] == "":
+                    empty.append(parts[0])
+    except OSError:
+        pass
+    return {"empty_password": empty}
+
+
+def _sha(path):
+    try:
+        with open(path, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()[:16]
+    except OSError:
+        return None
+
+
+def cmd_integrity():
+    """pacman -Qkk: verify every installed file against its package checksum.
+    Returns only real discrepancies outside /etc (config files are expected to differ)."""
+    proc = None
+    try:
+        proc = subprocess.run(["nice", "-n", "19", "ionice", "-c3", "pacman", "-Qkk"],
+                              capture_output=True, text=True, timeout=1800, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return {"error": "pacman -Qkk failed or timed out"}
+    rx = re.compile(r"^warning: (\S+): (/.*?) \((.+)\)$")
+    out = []
+    for line in (proc.stderr + "\n" + proc.stdout).splitlines():
+        m = rx.match(line.strip())
+        if not m:
+            continue
+        pkg, path, reason = m.groups()
+        if path.startswith(("/etc/", "/var/", "/boot/", "/usr/share/info/dir")):
+            continue
+        if reason == "Modification time mismatch":
+            continue
+        out.append({"pkg": pkg, "path": path, "reason": reason})
+        if len(out) >= 2000:
+            break
+    return {"issues": out}
+
+
+def cmd_authlog():
+    """Last 24 h of sshd / sudo journal lines (identifiers are fixed here, not caller-supplied)."""
+    txt = sh(["journalctl", "--since=-24h", "-o", "short-iso", "-q", "--no-pager",
+              "-t", "sshd", "-t", "sshd-session", "-t", "sudo", "-t", "su", "-t", "login"], timeout=120) or ""
+    lines = txt.splitlines()[-5000:]
+    who = sh(["loginctl", "list-sessions", "--no-legend", "--no-pager", "-o", "json"]) or "[]"
+    return {"lines": lines, "sessions": who}
+
+
+def cmd_persistence():
+    """Fingerprints of root-only persistence locations, for change detection."""
+    items = {}
+    keys = sh(["ssh-keygen", "-lf", "/root/.ssh/authorized_keys"]) or ""
+    items["root_ssh_keys"] = sorted(l.split()[1] for l in keys.splitlines() if len(l.split()) > 1)
+    cron = sh(["crontab", "-l", "-u", "root"]) or ""
+    # Fingerprints only: the caller learns that root's crontab changed, not what's in it.
+    items["root_crontab"] = sorted(hashlib.sha1(l.strip().encode()).hexdigest()[:10]
+                                   for l in cron.splitlines() if l.strip() and not l.startswith("#"))
+    files = {}
+    patterns = ["/etc/crontab", "/etc/cron.d/*", "/etc/cron.hourly/*", "/etc/cron.daily/*",
+                "/etc/ld.so.preload", "/etc/profile", "/etc/profile.d/*", "/etc/bash.bashrc",
+                "/etc/environment", "/etc/pam.d/*", "/etc/polkit-1/rules.d/*", "/etc/udev/rules.d/*",
+                "/etc/ssh/sshd_config", "/etc/ssh/sshd_config.d/*", "/etc/sudoers", "/etc/sudoers.d/*",
+                "/etc/hosts", "/etc/modules-load.d/*", "/etc/xdg/autostart/*"]
+    for pat in patterns:
+        for f in sorted(glob.glob(pat)):
+            if os.path.isfile(f):
+                files[f] = _sha(f)
+    items["root_files"] = files
+    try:
+        with open("/etc/ld.so.preload") as fh:
+            items["ld_preload"] = [l.strip() for l in fh if l.strip() and not l.startswith("#")]
+    except OSError:
+        items["ld_preload"] = []
+    return items
+
+
+COMMANDS = {
+    "ping": cmd_ping, "sockets": cmd_sockets, "ufw": cmd_ufw, "sshd": cmd_sshd,
+    "sudoers": cmd_sudoers, "suid": cmd_suid, "pacnew": cmd_pacnew, "shadow": cmd_shadow,
+    "integrity": cmd_integrity, "authlog": cmd_authlog, "persistence": cmd_persistence,
+}
+
+
+def main():
+    if len(sys.argv) != 2 or sys.argv[1] not in COMMANDS:
+        print(json.dumps({"error": "usage: pacwardx-priv <" + "|".join(COMMANDS) + ">"}))
+        sys.exit(2)
+    os.environ["PATH"] = "/usr/bin:/usr/sbin:/bin:/sbin"
+    # sudo keeps the caller's language; parsing needs untranslated output.
+    os.environ["LC_ALL"] = "C"
+    print(json.dumps(COMMANDS[sys.argv[1]]()))
+
+
+if __name__ == "__main__":
+    main()
